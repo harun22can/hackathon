@@ -44,7 +44,8 @@
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('status:', d['status']\\)\")",
       "Bash(curl -s http://127.0.0.1:8000/static/js/i18n.js)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8000/static/js/i18n.js)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8000/)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8000/)",
+      "Bash(C:/Python314/python.exe -c \"import pandas as pd; r=pd.read_csv\\('C:/Users/Tahae/hackathon/data/routes.csv'\\); s=pd.read_csv\\('C:/Users/Tahae/hackathon/data/route_stops.csv'\\); print\\('ROUTES columns:', list\\(r.columns\\)\\); print\\(r.head\\(3\\).to_string\\(\\)\\); print\\('---'\\); print\\('STOPS columns:', list\\(s.columns\\)\\); print\\(s.head\\(5\\).to_string\\(\\)\\)\")"
     ]
   }
 }
