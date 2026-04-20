@@ -50,18 +50,19 @@ class ErrorBoundary extends Component {
 // ═══════════════════════════════════════════
 
 function EfficiencyGainWidget({ routes }) {
+  const [lang] = window.useLang();
   if (!routes || routes.length === 0) return null;
   const totalDelay = routes.reduce((s, r) => s + ((r.improvement && r.improvement.delay_reduction_min) || 0), 0);
   const avgDelta   = routes.reduce((s, r) => s + ((r.improvement && r.improvement.on_time_rate_delta) || 0), 0) / routes.length;
   const critFixed  = routes.filter(r => r.severity !== 'critical' && r.optimized_metrics && r.optimized_metrics.on_time_rate > 0.7).length;
   return (
     <div className="efficiency-widget">
-      <div className="ew-label"><span className="ew-pulse"></span>Verimlilik Kazancı</div>
+      <div className="ew-label"><span className="ew-pulse"></span>{window.t('efficiency_gain')}</div>
       <div className="ew-main">
         <span className="ew-num">−{totalDelay.toFixed(0)}</span>
-        <span className="ew-unit"> dk</span>
+        <span className="ew-unit"> {window.t('unit_min')}</span>
       </div>
-      <div className="ew-sub">↑ +{(avgDelta * 100).toFixed(1)}% zamanında oran</div>
+      <div className="ew-sub">↑ +{(avgDelta * 100).toFixed(1)}% {window.t('on_time')}</div>
       <div className="ew-sub2">{routes.length} rota · {critFixed} kurtarıldı · RF R² {window.LOGISTICS_DATA.MODEL_STATS.r2}</div>
     </div>
   );

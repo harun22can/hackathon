@@ -390,8 +390,8 @@ const LangStore = {
   lang: (() => {
     try {
       const saved = localStorage.getItem('sivas-lang');
-      return (saved === 'tr' || saved === 'en' || saved === 'ru') ? saved : 'tr';
-    } catch { return 'tr'; }
+      return (saved === 'tr' || saved === 'en' || saved === 'ru') ? saved : 'en';
+    } catch { return 'en'; }
   })(),
   listeners: new Set(),
   set(l) {
