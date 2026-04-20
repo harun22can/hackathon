@@ -108,15 +108,19 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/favicon.ico", include_in_schema=False)
 def favicon():
-    """Tarayıcının favicon 404 hatasını önle."""
-    from fastapi.responses import Response
-    # 1×1 şeffaf PNG (base64)
-    import base64
-    png = base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
-    )
-    return Response(content=png, media_type="image/png")
-
+    """Gerçek favicon dosyasını servis et."""
+    from fastapi.responses import FileResponse
+    import os
+    
+    # Dosya yolunu belirle (sunucuyu başlattığın yere göre değişebilir)
+    favicon_path = os.path.join("static", "favicon.ico")
+    
+    if os.path.exists(favicon_path):
+        return FileResponse(favicon_path)
+    else:
+        # Dosya yoksa hata vermemesi için boş dönmeye devam etsin (veya 404)
+        from fastapi.responses import Response
+        return Response(status_code=204)
 
 @app.get("/", response_class=HTMLResponse, tags=["Meta"])
 def root():
