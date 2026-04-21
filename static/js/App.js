@@ -9,9 +9,7 @@ function App() {
   const [routes,     setRoutes]     = useState([]);
   const [selectedId, setSelectedId] = useState(null);
   const [filter,     setFilter]     = useState('all');
-  const [activeNav,  setActiveNav]  = useState('overview');
   const [routeMode,  setRouteMode]  = useState('both');
-  const [applied,    setApplied]    = useState({});
   const [loading,    setLoading]    = useState(true);
   const [loadError,  setLoadError]  = useState(null);
   const [loadProgress, setLoadProgress] = useState({ done: 0, total: 0 });
@@ -54,28 +52,14 @@ function App() {
     localStorage.setItem('sivas-tweaks', JSON.stringify(tweaks));
   }, [tweaks]);
 
-  // Run an array of async tasks in batches to avoid flooding the browser's
-  // 6-connection-per-host pool AND the backend's RF prediction queue.
-  async function runBatched(items, worker, batchSize = 6, onProgress) {
-    const results = [];
-    for (let i = 0; i < items.length; i += batchSize) {
-      const slice = items.slice(i, i + batchSize);
-      const batch = await Promise.all(slice.map(worker));
-      results.push(...batch);
-      if (onProgress) onProgress(Math.min(i + batchSize, items.length), items.length);
-    }
-    return results;
-  }
-
-  async function loadAll(weather) {
-    console.log('[loadAll] start, weather =', weather);
+  async function loadAll() {
+    console.log('[loadAll] start — basic list only');
     try {
       const [modelStats, circuity, routeList] = await Promise.all([
         fetch(`${API_BASE}/stats/model`).then(r => { if (!r.ok) throw new Error('stats/model '+r.status); return r.json(); }),
         fetch(`${API_BASE}/stats/circuity`).then(r => { if (!r.ok) throw new Error('stats/circuity '+r.status); return r.json(); }),
         fetch(`${API_BASE}/routes?limit=80`).then(r => { if (!r.ok) throw new Error('routes '+r.status); return r.json(); }),
       ]);
-      console.log('[loadAll] meta OK · routes:', routeList.length, '· sample:', routeList[0]);
       if (!Array.isArray(routeList) || routeList.length === 0) {
         throw new Error('Backend /routes returned empty list — is app.py running and did data_loader succeed?');
       }
@@ -84,36 +68,19 @@ function App() {
         MODEL_STATS: {
           mae_min:       modelStats.mae_min       ?? '—',
           r2:            modelStats.r2            ?? '—',
-          features_used: modelStats.features_used ?? 29,
+          features_used: modelStats.features_used ?? 26,
           top_features:  modelStats.top_features  || {},
         },
         CIRCUITY: circuity,
       };
 
-      const merged = await runBatched(
-        routeList,
-        async r => {
-          try { return await fetchAndMergeRoute(r.route_id, weather); }
-          catch (e) { console.error('Route load failed:', r.route_id, e); return null; }
-        },
-        8,
-        (done, total) => {
-          setLoadProgress({ done, total });
-          console.log(`[loadAll] progress ${done}/${total}`);
-        }
-      );
-
-      const valid = merged.filter(Boolean);
-      console.log(`[loadAll] done — valid=${valid.length}/${routeList.length}`);
-      console.log('Routes Loaded:', valid);
-      if (valid.length === 0) {
-        throw new Error('All route fetches failed — check /optimize endpoint.');
-      }
-      setRoutes(valid);
+      const basic = routeList.map(buildBasicRecord);
+      setLoadProgress({ done: basic.length, total: basic.length });
+      setRoutes(basic);
 
       const savedId  = localStorage.getItem('sivas-selected');
-      const hasId    = valid.some(r => r.route_id === savedId);
-      const newSelId = hasId ? savedId : (valid[0] && valid[0].route_id) || null;
+      const hasId    = basic.some(r => r.route_id === savedId);
+      const newSelId = hasId ? savedId : basic[0].route_id;
       setSelectedId(newSelId);
       if (newSelId) localStorage.setItem('sivas-selected', newSelId);
     } catch (e) {
@@ -122,38 +89,24 @@ function App() {
     }
   }
 
-  async function reOptimizeAll(weather) {
-    setOptimizing(true);
+  // Tek rotayı (seçilen veya arka plan) optimize et.
+  async function optimizeOne(routeId, weather, { silent = false } = {}) {
+    if (!silent) setOptimizing(true);
     try {
-      setRoutes(prev => {
-        (async () => {
-          const updated = await Promise.all(
-            prev.map(async r => {
-              try { return await fetchAndMergeRoute(r.route_id, weather); }
-              catch { return r; }
-            })
-          );
-          setRoutes(updated.filter(Boolean));
-          setOptimizing(false);
-        })();
-        return prev;
-      });
-    } catch {
-      setOptimizing(false);
+      const merged = await fetchAndMergeRoute(routeId, weather);
+      setRoutes(prev => prev.map(r => r.route_id === routeId ? merged : r));
+      return merged;
+    } catch (e) {
+      console.error('optimizeOne failed:', routeId, e);
+      return null;
+    } finally {
+      if (!silent) setOptimizing(false);
     }
   }
 
   async function reOptimizeSelected() {
     if (!selectedId) return;
-    setOptimizing(true);
-    try {
-      const merged = await fetchAndMergeRoute(selectedId, tweaks.weather);
-      setRoutes(prev => prev.map(r => r.route_id === selectedId ? merged : r));
-    } catch (e) {
-      console.error('reOptimizeSelected failed:', e);
-    } finally {
-      setOptimizing(false);
-    }
+    await optimizeOne(selectedId, tweaks.weather);
   }
 
   useEffect(() => {
@@ -161,7 +114,7 @@ function App() {
       setLoading(true);
       setLoadError(null);
       try {
-        await loadAll(tweaks.weather);
+        await loadAll();
       } catch (e) {
         setLoadError(String(e && e.message || e));
       } finally {
@@ -169,6 +122,42 @@ function App() {
       }
     })();
   }, []);
+
+  // Seçim değiştiğinde — eğer bu rota henüz detaylı değilse optimize et.
+  useEffect(() => {
+    if (!selectedId || loading) return;
+    const sel = routes.find(r => r.route_id === selectedId);
+    if (sel && !sel._detailed) {
+      optimizeOne(selectedId, tweaks.weather);
+    }
+  }, [selectedId, loading]);
+
+  // Hava senaryosu değişince: sadece şu an seçili olanı yeniden optimize et.
+  // Diğerleri arka-plan tick'i ile kademeli güncellenecek.
+  useEffect(() => {
+    if (loading || !selectedId) return;
+    optimizeOne(selectedId, tweaks.weather);
+    // Değişen hava → eski detayları invalidate et (lazy re-fetch olsun)
+    setRoutes(prev => prev.map(r =>
+      r.route_id === selectedId ? r : { ...r, _detailed: false, optimized_metrics: null }
+    ));
+  }, [tweaks.weather]);
+
+  // Arka plan tick — her 20 saniyede bir, detaylanmamış rastgele bir rotayı
+  // sessizce optimize et. Alerts ve KPI şeridi kademeli dolsun.
+  useEffect(() => {
+    if (loading) return;
+    const id = setInterval(() => {
+      setRoutes(prev => {
+        const pending = prev.filter(r => !r._detailed && r.route_id !== selectedId);
+        if (pending.length === 0) return prev;
+        const pick = pending[Math.floor(Math.random() * pending.length)];
+        optimizeOne(pick.route_id, tweaks.weather, { silent: true });
+        return prev;
+      });
+    }, 20000);
+    return () => clearInterval(id);
+  }, [loading, selectedId, tweaks.weather]);
 
   const handleTweaksChange = (newTweaks) => {
     const weatherChanged = newTweaks.weather !== tweaks.weather;
@@ -237,8 +226,6 @@ function App() {
   return (
     <div className="app">
       <TopBar
-        activeNav={activeNav}
-        setActiveNav={setActiveNav}
         criticalCount={criticalCount}
         onOpenTweaks={() => setTweaksOpen(!tweaksOpen)}
         optimizing={optimizing}
@@ -254,21 +241,23 @@ function App() {
         })()
       }}>
         {/* LEFT — Fleet list + Alerts */}
-        <div className="pane" style={{ overflow: 'hidden', position: 'relative', minWidth: 0 }}>
-          {leftOpen && <>
-            <ErrorBoundary label="FleetList" minimal>
-              <FleetList
-                routes={routes}
-                selectedId={selectedId}
-                onSelect={handleSelectRoute}
-                filter={filter}
-                onFilter={setFilter}
-              />
-            </ErrorBoundary>
-            <ErrorBoundary label="AlertsStrip" minimal>
-              <AlertsStrip routes={routes} onSelect={handleSelectRoute} />
-            </ErrorBoundary>
-          </>}
+        <div className="pane" style={{ overflow: 'visible', position: 'relative', minWidth: 0 }}>
+          <div style={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {leftOpen && <>
+              <ErrorBoundary label="FleetList" minimal>
+                <FleetList
+                  routes={routes}
+                  selectedId={selectedId}
+                  onSelect={handleSelectRoute}
+                  filter={filter}
+                  onFilter={setFilter}
+                />
+              </ErrorBoundary>
+              <ErrorBoundary label="AlertsStrip" minimal>
+                <AlertsStrip routes={routes} onSelect={handleSelectRoute} />
+              </ErrorBoundary>
+            </>}
+          </div>
           <button className="pane-toggle-btn left-toggle"
             onClick={() => setLeftOpen(v => !v)}
             title={leftOpen ? 'Paneli Kapat' : 'Paneli Aç'}>
@@ -303,17 +292,17 @@ function App() {
         </div>
 
         {/* RIGHT — Detail pane */}
-        <div className="pane" style={{ overflow: 'hidden', position: 'relative', minWidth: 0 }}>
-          {rightOpen && (
-            <ErrorBoundary label="DetailPane" minimal>
-              <DetailPane
-                route={selected}
-                onApply={() => setApplied({ ...applied, [selectedId]: true })}
-                applied={applied[selectedId]}
-                onReOptimize={reOptimizeSelected}
-              />
-            </ErrorBoundary>
-          )}
+        <div className="pane" style={{ overflow: 'visible', position: 'relative', minWidth: 0 }}>
+          <div style={{ overflow: 'hidden', height: '100%', display: 'flex', flexDirection: 'column' }}>
+            {rightOpen && (
+              <ErrorBoundary label="DetailPane" minimal>
+                <DetailPane
+                  route={selected}
+                  onReOptimize={reOptimizeSelected}
+                />
+              </ErrorBoundary>
+            )}
+          </div>
           <button className="pane-toggle-btn right-toggle"
             onClick={() => setRightOpen(v => !v)}
             title={rightOpen ? 'Paneli Kapat' : 'Paneli Aç'}>

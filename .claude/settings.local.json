@@ -45,7 +45,14 @@
       "Bash(curl -s http://127.0.0.1:8000/static/js/i18n.js)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8000/static/js/i18n.js)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8000/)",
-      "Bash(C:/Python314/python.exe -c \"import pandas as pd; r=pd.read_csv\\('C:/Users/Tahae/hackathon/data/routes.csv'\\); s=pd.read_csv\\('C:/Users/Tahae/hackathon/data/route_stops.csv'\\); print\\('ROUTES columns:', list\\(r.columns\\)\\); print\\(r.head\\(3\\).to_string\\(\\)\\); print\\('---'\\); print\\('STOPS columns:', list\\(s.columns\\)\\); print\\(s.head\\(5\\).to_string\\(\\)\\)\")"
+      "Bash(C:/Python314/python.exe -c \"import pandas as pd; r=pd.read_csv\\('C:/Users/Tahae/hackathon/data/routes.csv'\\); s=pd.read_csv\\('C:/Users/Tahae/hackathon/data/route_stops.csv'\\); print\\('ROUTES columns:', list\\(r.columns\\)\\); print\\(r.head\\(3\\).to_string\\(\\)\\); print\\('---'\\); print\\('STOPS columns:', list\\(s.columns\\)\\); print\\(s.head\\(5\\).to_string\\(\\)\\)\")",
+      "Bash(curl -fsSL -o /c/Users/Tahae/hackathon/CLAUDE.md https://raw.githubusercontent.com/drona23/claude-token-efficient/main/CLAUDE.md)",
+      "Bash(curl -o CLAUDE.md https://raw.githubusercontent.com/drona23/claude-token-efficient/main/CLAUDE.md)",
+      "Bash(.venv/Scripts/python.exe -c ' *)",
+      "Bash(.venv/Scripts/pip.exe list *)",
+      "Bash(/c/Python314/python -c \"import pandas\")",
+      "Bash(/c/Python314/python -c ' *)",
+      "Bash(/c/Python314/python -c \"from data_loader import MODEL_FEATURE_COLS; print\\(len\\(MODEL_FEATURE_COLS\\), 'features'\\); print\\(MODEL_FEATURE_COLS\\)\")"
     ]
   }
 }

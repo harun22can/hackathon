@@ -51,10 +51,11 @@ class ErrorBoundary extends Component {
 
 function EfficiencyGainWidget({ routes }) {
   const [lang] = window.useLang();
-  if (!routes || routes.length === 0) return null;
-  const totalDelay = routes.reduce((s, r) => s + ((r.improvement && r.improvement.delay_reduction_min) || 0), 0);
-  const avgDelta   = routes.reduce((s, r) => s + ((r.improvement && r.improvement.on_time_rate_delta) || 0), 0) / routes.length;
-  const critFixed  = routes.filter(r => r.severity !== 'critical' && r.optimized_metrics && r.optimized_metrics.on_time_rate > 0.7).length;
+  const detailed = (routes || []).filter(r => r._detailed);
+  if (detailed.length === 0) return null;
+  const totalDelay = detailed.reduce((s, r) => s + ((r.improvement && r.improvement.delay_reduction_min) || 0), 0);
+  const avgDelta   = detailed.reduce((s, r) => s + ((r.improvement && r.improvement.on_time_rate_delta) || 0), 0) / detailed.length;
+  const critFixed  = detailed.filter(r => r.severity !== 'critical' && r.optimized_metrics && r.optimized_metrics.on_time_rate > 0.7).length;
   return (
     <div className="efficiency-widget">
       <div className="ew-label"><span className="ew-pulse"></span>{window.t('efficiency_gain')}</div>
@@ -135,19 +136,19 @@ function FleetList({ routes, selectedId, onSelect, filter, onFilter }) {
             <div className="row-metrics">
               <div className="m">
                 <span className="k">{window.t('on_time')}</span>
-                <span className={`v ${r.original_metrics.on_time_rate < 0.3 ? 'critical' : r.original_metrics.on_time_rate < 0.7 ? 'warning' : 'ok'}`}>
-                  {(r.original_metrics.on_time_rate * 100).toFixed(0)}% → {(r.optimized_metrics.on_time_rate * 100).toFixed(0)}%
+                <span className={`v ${(r.original_metrics?.on_time_rate ?? 0) < 0.3 ? 'critical' : (r.original_metrics?.on_time_rate ?? 0) < 0.7 ? 'warning' : 'ok'}`}>
+                  {((r.original_metrics?.on_time_rate ?? 0) * 100).toFixed(0)}% → {((r.optimized_metrics?.on_time_rate ?? 0) * 100).toFixed(0)}%
                 </span>
               </div>
               <div className="m">
                 <span className="k">{window.t('delay')}</span>
                 <span className="v" style={{ color: 'var(--lime)' }}>
-                  −{Number(r.improvement.delay_reduction_min).toFixed(0)} {window.t('unit_min')}
+                  −{Number(r.improvement?.delay_reduction_min ?? 0).toFixed(0)} {window.t('unit_min')}
                 </span>
               </div>
             </div>
             <div className="progress">
-              <div className={`fill ${r.severity}`} style={{ width: `${r.optimized_metrics.on_time_rate * 100}%` }}></div>
+              <div className={`fill ${r.severity}`} style={{ width: `${(r.optimized_metrics?.on_time_rate ?? 0) * 100}%` }}></div>
             </div>
           </div>
         ))}

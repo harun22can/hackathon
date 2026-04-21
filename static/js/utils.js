@@ -37,15 +37,18 @@ function mergeToDesignFormat(routeDetail, optimResp) {
       package_count:     orig.package_count     ?? raw.package_count     ?? 0,
       package_weight_kg: orig.package_weight_kg ?? raw.package_weight_kg ?? 0,
       planned_service_min: raw.planned_service_min ?? 10,
+      planned_arrival: fmtTime(orig.planned_arrival || raw.planned_arrival),
       original: {
         predicted_arrival:        fmtTime(orig.predicted_arrival),
         within_time_window:       orig.within_time_window      ?? true,
         predicted_stop_delay_min: orig.predicted_stop_delay_min ?? 0,
+        arrival_deviation_min:    orig.arrival_deviation_min   ?? 0,
       },
       optimized: {
         predicted_arrival:        fmtTime(opt.predicted_arrival),
         within_time_window:       opt.within_time_window       ?? true,
         predicted_stop_delay_min: opt.predicted_stop_delay_min ?? 0,
+        arrival_deviation_min:    opt.arrival_deviation_min    ?? 0,
       },
       dynamic_conditions: {
         weather:          dc.weather           || 'clear',
@@ -81,11 +84,13 @@ function mergeToDesignFormat(routeDetail, optimResp) {
       on_time_rate:              origM.on_time_rate              ?? 0,
       total_predicted_delay_min: origM.total_predicted_delay_min ?? 0,
       avg_delay_per_stop_min:    origM.avg_delay_per_stop_min    ?? 0,
+      historical_risk_sum_min:   origM.historical_risk_sum_min   ?? 0,
     },
     optimized_metrics: {
       on_time_rate:              optM.on_time_rate              ?? 0,
       total_predicted_delay_min: optM.total_predicted_delay_min ?? 0,
       avg_delay_per_stop_min:    optM.avg_delay_per_stop_min    ?? 0,
+      historical_risk_sum_min:   optM.historical_risk_sum_min   ?? 0,
     },
     improvement: optimResp.improvement || { on_time_rate_delta: 0, delay_reduction_min: 0 },
     stops,
@@ -132,6 +137,42 @@ function offsetOverlaps(stops) {
   });
 }
 
+// Hafif kayıt — /routes endpoint'inden tek satır, henüz optimize edilmedi.
+// Fleet list için gereken alanları historical veriden doldurur.
+function buildBasicRecord(row) {
+  const rate = row.on_time_delivery_rate ?? 0;
+  const severity = rate < 0.3 ? 'critical' : rate < 0.7 ? 'warning' : 'ok';
+  return {
+    route_id: row.route_id,
+    vehicle_id: row.route_id,
+    vehicle_type: row.vehicle_type || 'van',
+    num_stops: row.num_stops ?? 0,
+    total_distance_km: row.total_distance_km ?? 0,
+    weather_condition: row.weather_condition || 'clear',
+    traffic_level: row.traffic_level || 'low',
+    temperature_c: null,
+    visibility_km: null,
+    wind_speed_kmh: null,
+    severity,
+    delay_factor: 1,
+    rf_predicted_total_delay_min: 0,
+    original_metrics: {
+      on_time_rate: rate,
+      total_predicted_delay_min: row.total_delay_min ?? 0,
+      avg_delay_per_stop_min: (row.num_stops ? (row.total_delay_min ?? 0) / row.num_stops : 0),
+      historical_risk_sum_min: 0,
+    },
+    optimized_metrics: {
+      on_time_rate: rate,
+      total_predicted_delay_min: row.total_delay_min ?? 0,
+      avg_delay_per_stop_min: (row.num_stops ? (row.total_delay_min ?? 0) / row.num_stops : 0),
+    },
+    improvement: { on_time_rate_delta: 0, delay_reduction_min: 0 },
+    stops: [],
+    _detailed: false,
+  };
+}
+
 async function fetchAndMergeRoute(routeId, weather) {
   const [detail, optResult] = await Promise.all([
     fetch(`${API_BASE}/routes/${routeId}`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
@@ -141,5 +182,7 @@ async function fetchAndMergeRoute(routeId, weather) {
       body: JSON.stringify({ weather_condition: weather }),
     }).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }),
   ]);
-  return mergeToDesignFormat(detail, optResult);
+  const merged = mergeToDesignFormat(detail, optResult);
+  merged._detailed = true;
+  return merged;
 }

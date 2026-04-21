@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 from pathlib import Path
 
-from data_loader import load_all, compute_circuity_factors, compute_speed_table, haversine
+from data_loader import load_all, compute_circuity_factors, compute_speed_table, compute_service_inflation, haversine
 from predictor import DelayPredictor
 from optimizer import simulate_route, optimize_stop_order, compute_metrics
 
@@ -56,6 +56,7 @@ async def lifespan(app: FastAPI):
 
     circuity, circuity_counts = compute_circuity_factors(stops)
     speed_table, speed_counts = compute_speed_table(routes, stops)
+    service_inflation = compute_service_inflation(stops)
 
     state["routes"] = routes
     state["stops"] = stops
@@ -67,6 +68,7 @@ async def lifespan(app: FastAPI):
     state["circuity_counts"] = circuity_counts  # sample counts — exposed in API
     state["speed_table"] = speed_table    # (road,traffic,weather) → km/h
     state["speed_counts"] = speed_counts
+    state["service_inflation"] = service_inflation
     state["train_stats"] = train_stats
 
     print("=" * 60)
@@ -75,6 +77,7 @@ async def lifespan(app: FastAPI):
     print(f"  Model R²   : {train_stats.get('r2')}")
     print(f"  Circuity   : {circuity}")
     print(f"  Speed tbl. : {len(speed_table)} kombinasyon ({sum(speed_counts.values())} örnek)")
+    print(f"  Svc inflat.: {service_inflation:.3f}x (actual/planned service median)")
     print("=" * 60)
     yield
 
@@ -168,10 +171,11 @@ def _compute_delay_factor(route_info: dict, predicted_delay_min: float) -> float
     planned = float(route_info.get("planned_duration_min", 1))
     if planned <= 0:
         return 1.0
-    # Üst sınır 1.45 — fazla kötümserliği önler.
-    # delay_factor * congestion_penalty bileşik etkisini dengede tutar.
+    # delay_factor artık cascade'e girmez (optimizer.py effective_speed + service_inflation
+    # kullanıyor). Sadece display amaçlı — geniş tavan bırakıyoruz ki gerçekçi
+    # veri (actual/planned median ≈ 1.7) kırpılmasın.
     raw = (planned + predicted_delay_min) / planned
-    return min(max(1.0, raw), 1.45)
+    return min(max(1.0, raw), 3.0)
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +288,7 @@ def optimize_route(route_id: str, req: OptimizeRequest):
     original_stops = simulate_route(
         stops_df, route_info, state["predictor"], state["hist"],
         state["weather"], state["traffic"], state["circuity"], state["speed_table"],
+        service_inflation=state["service_inflation"],
         initial_weather=weather, initial_traffic=traffic,
     )
     original_metrics = compute_metrics(original_stops)
@@ -291,6 +296,7 @@ def optimize_route(route_id: str, req: OptimizeRequest):
     optimized_stops = optimize_stop_order(
         stops_df, route_info, state["predictor"], state["hist"],
         state["weather"], state["traffic"], state["circuity"], state["speed_table"],
+        service_inflation=state["service_inflation"],
         initial_weather=weather, initial_traffic=traffic,
     )
     optimized_metrics = compute_metrics(optimized_stops)

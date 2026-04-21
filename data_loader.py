@@ -156,6 +156,26 @@ def compute_speed_table(
 DEFAULT_BASE_SPEED = {"highway": 90.0, "urban": 45.0, "rural": 65.0, "mountain": 40.0}
 
 
+def compute_service_inflation(stops: pd.DataFrame) -> float:
+    """
+    Gerçek/planlanan servis süresi oranı — tüm duraklar için medyan.
+
+    Veri seti istatistiği: actual_service_min / planned_service_min.
+    Teslimat sırasında paket sayısı, asansör, park gibi gecikmeler
+    planlananın üstüne çıkar. Medyanı alarak aykırı değerlerden korunuyoruz.
+
+    Cascade'de `service_min × inflation` olarak kullanılır.
+    """
+    valid = stops[
+        (stops["planned_service_min"] > 0.1)
+        & (stops["actual_service_min"] > 0.1)
+    ]
+    if valid.empty:
+        return 1.22
+    ratio = valid["actual_service_min"] / valid["planned_service_min"]
+    return float(ratio.median())
+
+
 def lookup_effective_speed(
     road_type: str,
     traffic_level: str,
@@ -461,8 +481,10 @@ MODEL_FEATURE_COLS = [
     "road_incident", "incident_severity",
     "vehicle_enc", "num_stops", "total_distance_km",
     "hour", "day_of_week", "month", "is_rush_hour", "is_night",
-    "avg_delay_probability", "max_delay_probability",
+    # NOT: stop_travel_ratio, avg_delay_probability, max_delay_probability kaldırıldı —
+    # bunlar actual_travel_min'den türetildiği için target'ı sızdırıyorlardı (data leakage).
+    # Model gerçek senaryoda (yeni rota, actual yok) çöker.
     "pct_mountain", "pct_highway", "pct_urban", "pct_rural",
-    "stop_travel_ratio", "total_packages", "total_weight_kg",
+    "total_packages", "total_weight_kg",
     "nearest_weather_risk",
 ]
